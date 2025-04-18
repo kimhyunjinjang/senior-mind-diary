@@ -1,6 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:table_calendar/table_calendar.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized(); // Flutter 초기화
+  await initializeDateFormatting('ko_KR', null); // 한글 날짜 포맷 초기화
   runApp(const MyApp());
 }
 
@@ -30,7 +38,8 @@ class MyApp extends StatelessWidget {
         // tested with just a hot reload.
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      //home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: CalendarScreen(),
     );
   }
 }
@@ -117,6 +126,203 @@ class _MyHomePageState extends State<MyHomePage> {
         tooltip: 'Increment',
         child: const Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+}
+
+class CalendarScreen extends StatefulWidget {
+  @override
+  _CalendarScreenState createState() => _CalendarScreenState();
+}
+
+class _CalendarScreenState extends State<CalendarScreen> {
+  Map<String, String> _emotionData={};
+  @override
+  void initState(){
+    super.initState();
+    _loadEmotionData(); // 앱 실행 시 감정 데이터 불러오기
+    _debugPrintAppDir(); // 콘솔에 경로 출력
+  }
+  void _loadEmotionData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('emotionData');
+    print('불러온 JSON 문자열: $jsonString');
+    if (jsonString != null) {
+      setState(() {
+        _emotionData = Map<String, String>.from(json.decode(jsonString));
+      });
+
+      // 콘솔 출력 여기!
+      print('불러온 감정 데이터: $_emotionData');
+    }
+  }
+  void _debugPrintAppDir() async {
+    final dir = await getApplicationSupportDirectory();
+    print('🗂️ 앱 저장 경로: ${dir.path}');
+  }
+
+  DateTime _focusedDay = DateTime.now();
+  DateTime? _selectedDay;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('시니어 마음일기'),
+      ),
+      body: Column(
+        children: [
+          TableCalendar(
+            locale: 'ko_KR',
+            firstDay: DateTime.utc(2020, 1, 1),
+            lastDay: DateTime.utc(2030, 12, 31),
+            focusedDay: _focusedDay,
+            selectedDayPredicate: (day) {
+              return isSameDay(_selectedDay, day);
+            },
+            onDaySelected: (selectedDay, focusedDay) {
+              setState(() {
+                _selectedDay = selectedDay;
+                _focusedDay = focusedDay;
+              });
+              // 감정 입력 화면으로 이동
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => EmotionInputScreen(selectedDay: selectedDay),
+              ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class EmotionInputScreen extends StatelessWidget {
+  final DateTime selectedDay;
+
+  const EmotionInputScreen({super.key, required this.selectedDay});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${selectedDay.month}월 ${selectedDay.day}일 감정 입력'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '오늘 기분은 어땠나요?',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 40),
+
+            // 😊 기분 좋음
+            EmotionButton(
+              emoji: '😊',
+              label: '기분 좋음',
+              color: Colors.green.shade300,
+              onTap: () {
+                _submitEmotion(context, selectedDay, '기분 좋음');
+              },
+            ),
+
+            const SizedBox(height: 20),
+
+            // 😐 보통
+            EmotionButton(
+              emoji: '😐',
+              label: '보통',
+              color: Colors.grey.shade400,
+              onTap: () {
+                _submitEmotion(context, selectedDay, '보통');
+              },
+            ),
+
+            const SizedBox(height: 20),
+
+            // 😞 기분 안 좋음
+            EmotionButton(
+              emoji: '😞',
+              label: '기분 안 좋음',
+              color: Colors.red.shade200,
+              onTap: () {
+                _submitEmotion(context, selectedDay, '기분 안 좋음');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _submitEmotion(BuildContext context, DateTime date, String emotion) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('emotionData');
+    Map<String, String> data = {};
+    if (jsonString != null) {
+      data = Map<String, String>.from(json.decode(jsonString));
+    }
+
+    final formattedDate = date.toIso8601String().split('T')[0];
+    data[formattedDate] = emotion;
+
+    print('저장되는 감정 데이터: $data');
+
+    await prefs.setString('emotionData', json.encode(data));
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$emotion 으로 저장되었습니다.')),
+    );
+
+    Navigator.pop(context); // 이전 화면으로 돌아가기
+  }
+}
+
+class EmotionButton extends StatelessWidget {
+  final String emoji;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const EmotionButton({
+    super.key,
+    required this.emoji,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: Column(
+          children: [
+            Text(
+              emoji,
+              style: const TextStyle(fontSize: 36),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 18),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
