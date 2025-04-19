@@ -6,6 +6,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
+ValueNotifier<Map<String, String>> emotionDataNotifier = ValueNotifier({});
+
+// 날짜를 yyyy-MM-dd 형식으로 포맷하는 함수
+String formatDate(DateTime date) {
+  return '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Flutter 초기화
   await initializeDateFormatting('ko_KR', null); // 한글 날짜 포맷 초기화
@@ -136,24 +145,23 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  Map<String, String> _emotionData={};
   @override
   void initState(){
     super.initState();
     _loadEmotionData(); // 앱 실행 시 감정 데이터 불러오기
     _debugPrintAppDir(); // 콘솔에 경로 출력
+    emotionDataNotifier.addListener((){
+      print('감정 데이터 변경됨: ${emotionDataNotifier.value}');
+    });
   }
-  void _loadEmotionData() async {
+  Future<void> _loadEmotionData() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonString = prefs.getString('emotionData');
     print('불러온 JSON 문자열: $jsonString');
-    if (jsonString != null) {
-      setState(() {
-        _emotionData = Map<String, String>.from(json.decode(jsonString));
-      });
 
-      // 콘솔 출력 여기!
-      print('불러온 감정 데이터: $_emotionData');
+    if (jsonString != null) {
+      final data = Map<String, String>.from(json.decode(jsonString));
+      emotionDataNotifier.value = data;
     }
   }
   void _debugPrintAppDir() async {
@@ -172,28 +180,70 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       body: Column(
         children: [
-          TableCalendar(
-            locale: 'ko_KR',
-            firstDay: DateTime.utc(2020, 1, 1),
-            lastDay: DateTime.utc(2030, 12, 31),
-            focusedDay: _focusedDay,
-            selectedDayPredicate: (day) {
-              return isSameDay(_selectedDay, day);
+          ValueListenableBuilder(
+            valueListenable: emotionDataNotifier,
+            builder: (context, emotionMap, _){
+              return TableCalendar(
+                locale: 'ko_KR',
+                firstDay: DateTime.utc(2020, 1, 1),
+                lastDay: DateTime.utc(2030, 12, 31),
+                focusedDay: _focusedDay,
+                selectedDayPredicate: (day) {
+                  return isSameDay(_selectedDay, day);
+                },
+                onDaySelected: (selectedDay, focusedDay) async {
+                  setState(() {
+                    _selectedDay = selectedDay;
+                    _focusedDay = focusedDay;
+                  });
+
+                  // 감정 입력 화면 다녀오기
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => EmotionInputScreen(selectedDay: selectedDay),
+                    ),
+                  );
+
+                  // 데이터 다시 불러오기
+                  await _loadEmotionData();
+
+                  // 강제로 selectedDay를 한번 무효화했다가 다시 설정
+                  setState(() {
+                    _selectedDay = null;
+                  });
+
+                  Future.delayed(Duration(milliseconds: 50), () {
+                    setState(() {
+                      _focusedDay = selectedDay; // 다시 원래 날짜로 복귀해서 리렌더 유도
+                    });
+                  });
+                },
+
+                // 감정 이모티콘 셀
+                calendarBuilders: CalendarBuilders(defaultBuilder: (context, day, focuseDay){
+                  final dateStr = formatDate(day);
+                  final emotion = emotionDataNotifier.value[dateStr];
+
+                  if (emotion != null) {
+                    String emoji;
+                    if(emotion == '기분 좋음') emoji = '😊';
+                    else if(emotion =='보통') emoji = '😐';
+                    else emoji = '😞';
+
+                    return Column(mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('${day.day}'),
+                        Text(emoji),
+                      ],
+                    );
+                  }
+                  return null;
+                },
+                ),
+              ); // TableCalender
             },
-            onDaySelected: (selectedDay, focusedDay) {
-              setState(() {
-                _selectedDay = selectedDay;
-                _focusedDay = focusedDay;
-              });
-              // 감정 입력 화면으로 이동
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => EmotionInputScreen(selectedDay: selectedDay),
-              ),
-              );
-            },
-          ),
+          )
         ],
       ),
     );
@@ -269,12 +319,15 @@ class EmotionInputScreen extends StatelessWidget {
       data = Map<String, String>.from(json.decode(jsonString));
     }
 
-    final formattedDate = date.toIso8601String().split('T')[0];
+    final formattedDate = formatDate(date);
     data[formattedDate] = emotion;
 
     print('저장되는 감정 데이터: $data');
 
     await prefs.setString('emotionData', json.encode(data));
+
+    // notifier에 업데이트
+    emotionDataNotifier = ValueNotifier<Map<String, String>>(Map<String, String>.from(data));
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$emotion 으로 저장되었습니다.')),
