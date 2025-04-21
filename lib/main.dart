@@ -152,6 +152,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     super.initState();
     _loadEmotionData(); // 앱 실행 시 감정 데이터 불러오기
     _debugPrintAppDir(); // 콘솔에 경로 출력
+
     emotionDataNotifier.addListener((){
       print('감정 데이터 변경됨: ${emotionDataNotifier.value}');
       setState(() {
@@ -159,6 +160,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       });
     });
   }
+
   Future<void> _loadEmotionData() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonString = prefs.getString('emotionData');
@@ -284,27 +286,53 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 },
 
                 // 감정 이모티콘 셀
-                calendarBuilders: CalendarBuilders(defaultBuilder: (context, day, focuseDay){
-                  final dateStr = formatDate(day);
-                  final emotion = emotionDataNotifier.value[dateStr];
+                calendarBuilders: CalendarBuilders(
+                  defaultBuilder: (context, day, focusedDay) {
+                    final dateStr = formatDate(day);
+                    final emotion = emotionDataNotifier.value[dateStr];
 
-                  if (emotion != null) {
-                    String emoji;
-                    if(emotion == '기분 좋음') emoji = '😊';
-                    else if(emotion =='보통') emoji = '😐';
-                    else emoji = '😞';
+                    if (emotion != null) {
+                      String emoji;
+                      if (emotion == '기분 좋음') emoji = '😊';
+                      else if (emotion == '보통') emoji = '😐';
+                      else emoji = '😞';
 
-                    return Column(mainAxisAlignment: MainAxisAlignment.center,
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('${day.day}'),
+                          Text(emoji),
+                        ],
+                      );
+                    }
+                    return null;
+                  },
+
+                  todayBuilder: (context, day, focusedDay) {
+                    final dateStr = formatDate(day);
+                    final emotion = emotionDataNotifier.value[dateStr];
+                    String emoji = '';
+
+                    if (emotion != null) {
+                      if (emotion == '기분 좋음') emoji = '😊';
+                      else if (emotion == '보통') emoji = '😐';
+                      else emoji = '😞';
+                    }
+
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text('${day.day}'),
-                        Text(emoji),
+                        Text(
+                          '${day.day}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold),
+                        ),
+                        if (emoji.isNotEmpty) Text(emoji),
                       ],
                     );
-                  }
-                  return null;
-                },
+                  },
                 ),
-              ); // TableCalender
+              );
             },
           )
         ],
