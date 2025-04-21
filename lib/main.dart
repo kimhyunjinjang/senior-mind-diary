@@ -253,10 +253,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 firstDay: DateTime.utc(2020, 1, 1),
                 lastDay: DateTime.utc(2030, 12, 31),
                 focusedDay: _focusedDay,
-                selectedDayPredicate: (day) {
-                  return isSameDay(_selectedDay, day);
-                },
+
+                selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                enabledDayPredicate: (day) => !day.isAfter(DateTime.now()),
+                calendarStyle: CalendarStyle(
+                  disabledTextStyle: TextStyle(color: Colors.grey), // 미래는 회색
+                ),
                 onDaySelected: (selectedDay, focusedDay) async {
+                  if (selectedDay.isAfter(DateTime.now())) return; // 미래면 클릭 무시
+
                   setState(() {
                     _selectedDay = selectedDay;
                     _focusedDay = focusedDay;
