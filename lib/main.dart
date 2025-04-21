@@ -145,6 +145,8 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
+  String _mostFrequentEmotion = '보통';
+
   @override
   void initState(){
     super.initState();
@@ -152,6 +154,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _debugPrintAppDir(); // 콘솔에 경로 출력
     emotionDataNotifier.addListener((){
       print('감정 데이터 변경됨: ${emotionDataNotifier.value}');
+      setState(() {
+        _mostFrequentEmotion = getMostFrequentEmotion(emotionDataNotifier.value);
+      });
     });
   }
   Future<void> _loadEmotionData() async {
@@ -162,11 +167,50 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (jsonString != null) {
       final data = Map<String, String>.from(json.decode(jsonString));
       emotionDataNotifier.value = data;
+      _mostFrequentEmotion = getMostFrequentEmotion(data);
     }
   }
   void _debugPrintAppDir() async {
     final dir = await getApplicationSupportDirectory();
     print('🗂️ 앱 저장 경로: ${dir.path}');
+  }
+
+  String getMostFrequentEmotion(Map<String, String>data) {
+    Map<String, int> count = {
+      '기분 좋음' : 0,
+      '보통' : 0,
+      '기분 안 좋음' : 0,
+    };
+
+    for (var value in data.values) {
+      if (count.containsKey(value)) {
+        count[value] = count[value]! + 1;
+      }
+    }
+
+    // 최대 빈도 찾기
+    int maxCount = count.values.fold(0, (prev, curr) => curr > prev ? curr : prev);
+    final maxEmotions = count.entries.where((e) => e.value == maxCount).map((e) => e.key).toList();
+
+    // 동점일 경우 '보통'으로
+    if (maxEmotions.length != 1) return '모든 감정이 비슷하게 선택되었어요';
+
+    return maxEmotions.first;
+  }
+
+  String getEmotionEmoji(String emotion) {
+    switch (emotion) {
+      case '기분 좋음':
+        return '😊';
+      case '보통':
+        return '😐';
+      case '기분 안 좋음':
+        return '😞';
+      case '모든 감정이 비슷하게 선택되었어요':
+        return '🤷';
+      default:
+        return '';
+    }
   }
 
   DateTime _focusedDay = DateTime.now();
@@ -180,7 +224,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       body: Column(
         children: [
-          ValueListenableBuilder(
+          // 감정 최빈값 상단 표시
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              children: [
+              Text(
+              '가장 자주 느낀 감정',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 8),
+              Text(
+                getEmotionEmoji(_mostFrequentEmotion),
+                style: const TextStyle(fontSize: 36),
+              ),
+              ],
+            ),
+          ),
+
+      // 캘린더
+      ValueListenableBuilder(
             valueListenable: emotionDataNotifier,
             builder: (context, emotionMap, _){
               return TableCalendar(
