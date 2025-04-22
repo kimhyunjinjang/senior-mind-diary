@@ -5,8 +5,91 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:pie_chart/pie_chart.dart';
 
 ValueNotifier<Map<String, String>> emotionDataNotifier = ValueNotifier({});
+
+class EmotionStatsScreen extends StatelessWidget {
+  const EmotionStatsScreen({super.key});
+
+  Future<Map<String, double>> _getEmotionCounts() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('emotionData');
+    Map<String, String> data = {};
+    if (jsonString != null) {
+      data = Map<String, String>.from(json.decode(jsonString));
+    }
+
+    // 초기화
+    Map<String, double> counts = {
+      '😊 기분 좋음': 0,
+      '😐 보통': 0,
+      '😞 기분 안 좋음': 0,
+    };
+
+    // 데이터 집계
+    for (var value in data.values) {
+      switch (value) {
+        case '기분 좋음':
+          counts['😊 기분 좋음'] = counts['😊 기분 좋음']! + 1;
+          break;
+        case '보통':
+          counts['😐 보통'] = counts['😐 보통']! + 1;
+          break;
+        case '기분 안 좋음':
+          counts['😞 기분 안 좋음'] = counts['😞 기분 안 좋음']! + 1;
+          break;
+      }
+    }
+
+    return counts;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('감정 통계'),
+      ),
+      body: FutureBuilder<Map<String, double>>(
+        future: _getEmotionCounts(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return Center(child: CircularProgressIndicator());
+          }
+
+          final dataMap = snapshot.data!;
+          final total = dataMap.values.reduce((a, b) => a + b);
+          final showChart = total > 0;
+
+          return Center(
+            child: showChart
+                ? PieChart(
+              dataMap: dataMap,
+              animationDuration: Duration(milliseconds: 800),
+              chartRadius: MediaQuery.of(context).size.width / 1.5,
+              chartType: ChartType.disc,
+              legendOptions: LegendOptions(
+                showLegends: true,
+                legendPosition: LegendPosition.bottom,
+                legendTextStyle: TextStyle(fontSize: 16),
+              ),
+              chartValuesOptions: ChartValuesOptions(
+                showChartValuesInPercentage: true,
+                showChartValues: true,
+                decimalPlaces: 0,
+              ),
+            )
+                : Text(
+              '아직 감정 기록이 없어요 😢',
+              style: TextStyle(fontSize: 18),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
 
 // 날짜를 yyyy-MM-dd 형식으로 포맷하는 함수
 String formatDate(DateTime date) {
@@ -482,25 +565,6 @@ class EmotionButton extends StatelessWidget {
               style: const TextStyle(fontSize: 18),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class EmotionStatsScreen extends StatelessWidget {
-  const EmotionStatsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('감정 통계'),
-      ),
-      body: Center(
-        child: Text(
-          '여기에 감정 통계 그래프가 표시됩니다.',
-          style: TextStyle(fontSize: 18),
         ),
       ),
     );
