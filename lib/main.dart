@@ -28,6 +28,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Flutter Demo',
       theme: ThemeData(
         // This is the theme of your application.
@@ -223,6 +224,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('시니어 마음일기'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.pie_chart),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => EmotionStatsScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -470,6 +482,25 @@ class EmotionButton extends StatelessWidget {
               style: const TextStyle(fontSize: 18),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class EmotionStatsScreen extends StatelessWidget {
+  const EmotionStatsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('감정 통계'),
+      ),
+      body: Center(
+        child: Text(
+          '여기에 감정 통계 그래프가 표시됩니다.',
+          style: TextStyle(fontSize: 18),
         ),
       ),
     );
