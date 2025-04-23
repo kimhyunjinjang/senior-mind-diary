@@ -7,7 +7,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:pie_chart/pie_chart.dart';
 
-ValueNotifier<Map<String, String>> emotionDataNotifier = ValueNotifier({});
+ValueNotifier<Map<String, Map<String, String>>> emotionDataNotifier = ValueNotifier({});
 
 class EmotionStatsScreen extends StatelessWidget {
   const EmotionStatsScreen({super.key});
@@ -15,9 +15,13 @@ class EmotionStatsScreen extends StatelessWidget {
   Future<Map<String, double>> _getEmotionCounts() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonString = prefs.getString('emotionData');
-    Map<String, String> data = {};
+    Map<String, Map<String, String>> data = {};
+
     if (jsonString != null) {
-      data = Map<String, String>.from(json.decode(jsonString));
+      final raw = json.decode(jsonString);
+      data = Map<String, Map<String, String>>.from(
+        raw.map((k, v) => MapEntry(k, Map<String, String>.from(v))),
+      );
     }
 
     // 초기화
@@ -29,7 +33,8 @@ class EmotionStatsScreen extends StatelessWidget {
 
     // 데이터 집계
     for (var value in data.values) {
-      switch (value) {
+      final emotion = value['emotion'];
+      switch (emotion) {
         case '기분 좋음':
           counts['😊 기분 좋음'] = counts['😊 기분 좋음']! + 1;
           break;
@@ -204,7 +209,7 @@ class _MyHomePageState extends State<MyHomePage> {
           // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
           // action in the IDE, or press "p" in the console), to see the
           // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.start,
           children: <Widget>[
             const Text('You have pushed the button this many times:'),
             Text(
@@ -251,7 +256,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     print('불러온 JSON 문자열: $jsonString');
 
     if (jsonString != null) {
-      final data = Map<String, String>.from(json.decode(jsonString));
+      final raw = json.decode(jsonString);
+      final data = Map<String, Map<String, String>>.from(
+          raw.map((k, v) => MapEntry(k, Map<String, String>.from(v)))
+      );
       emotionDataNotifier.value = data;
       _mostFrequentEmotion = getMostFrequentEmotion(data);
     }
@@ -261,7 +269,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     print('🗂️ 앱 저장 경로: ${dir.path}');
   }
 
-  String getMostFrequentEmotion(Map<String, String>data) {
+  String getMostFrequentEmotion(Map<String, Map<String, String>> data) {
     Map<String, int> count = {
       '기분 좋음' : 0,
       '보통' : 0,
@@ -269,8 +277,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     };
 
     for (var value in data.values) {
-      if (count.containsKey(value)) {
-        count[value] = count[value]! + 1;
+      final emotion = value['emotion'] ?? '보통';
+      if (count.containsKey(emotion)) {
+        count[emotion] = count[emotion]! + 1;
       }
     }
 
@@ -389,28 +398,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 calendarBuilders: CalendarBuilders(
                   defaultBuilder: (context, day, focusedDay) {
                     final dateStr = formatDate(day);
-                    final emotion = emotionDataNotifier.value[dateStr];
+                    final emotion = emotionDataNotifier.value[dateStr]?['emotion'];
+                    String emoji = '';
 
                     if (emotion != null) {
-                      String emoji;
-                      if (emotion == '기분 좋음') emoji = '😊';
-                      else if (emotion == '보통') emoji = '😐';
-                      else emoji = '😞';
+                      if (emotion == '기분 좋음')
+                        emoji = '😊';
+                      else if (emotion == '보통')
+                        emoji = '😐';
+                      else
+                        emoji = '😞';
+                    }
 
                       return Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.start,
                         children: [
-                          Text('${day.day}'),
-                          Text(emoji),
+                          Text('${day.day}',
+                              style: TextStyle(fontWeight: isSameDay(day, DateTime.now()) ? FontWeight.bold : FontWeight.normal)),
+                          if (emoji.isNotEmpty) Text(emoji),
                         ],
                       );
-                    }
-                    return null;
-                  },
+                    },
 
                   todayBuilder: (context, day, focusedDay) {
                     final dateStr = formatDate(day);
-                    final emotion = emotionDataNotifier.value[dateStr];
+                    final emotion = emotionDataNotifier.value[dateStr]?['emotion'];
                     String emoji = '';
 
                     if (emotion != null) {
@@ -420,13 +432,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     }
 
                     return Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.start,
                       children: [
-                        Text(
-                          '${day.day}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold),
-                        ),
+                        Text('${day.day}', style: TextStyle(fontWeight: FontWeight.bold)),
                         if (emoji.isNotEmpty) Text(emoji),
                       ],
                     );
@@ -441,90 +449,132 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 }
 
-class EmotionInputScreen extends StatelessWidget {
+class EmotionInputScreen extends StatefulWidget {
   final DateTime selectedDay;
 
   const EmotionInputScreen({super.key, required this.selectedDay});
 
   @override
+  State<EmotionInputScreen> createState() => _EmotionInputScreenState();
+}
+
+class _EmotionInputScreenState extends State<EmotionInputScreen> {
+  final TextEditingController _diaryController = TextEditingController();
+  String? _selectedEmotion;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedDiary(); // 일기 내용 불러오기
+  }
+
+  Future<void> _loadSavedDiary() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('emotionData');
+    if (jsonString != null) {
+      final raw = json.decode(jsonString);
+      final data = Map<String, Map<String, String>>.from(
+        raw.map((k, v) => MapEntry(k, Map<String, String>.from(v))),
+      );
+      final formattedDate = formatDate(widget.selectedDay);
+      final saved = data[formattedDate];
+      if (saved != null) {
+        setState(() {
+          _selectedEmotion = saved['emotion'];
+          _diaryController.text = saved['diary'] ?? '';
+        });
+      }
+    }
+  }
+
+  void _saveData() async {
+    if (_selectedEmotion == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('감정을 선택해주세요.')),
+      );
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('emotionData');
+    Map<String, dynamic> data = {};
+    if (jsonString != null) {
+      data = Map<String, dynamic>.from(json.decode(jsonString));
+    }
+
+    final formattedDate = formatDate(widget.selectedDay);
+    data[formattedDate] = {
+      'emotion': _selectedEmotion!,
+      'diary': _diaryController.text,
+    };
+
+    await prefs.setString('emotionData', json.encode(data));
+    emotionDataNotifier.value = Map<String, Map<String, String>>.from(
+        data.map((k, v) => MapEntry(k, Map<String, String>.from(v)))
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('감정과 일기가 저장되었습니다.')),
+    );
+
+    Navigator.pop(context);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${selectedDay.month}월 ${selectedDay.day}일 감정 입력'),
+        title: Text('${widget.selectedDay.month}월 ${widget.selectedDay.day}일 감정 입력'),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '오늘 기분은 어땠나요?',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 40),
-
-            // 😊 기분 좋음
+            Text('오늘 기분은 어땠나요?', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
             EmotionButton(
-              emoji: '😊',
-              label: '기분 좋음',
-              color: Colors.green.shade300,
-              onTap: () {
-                _submitEmotion(context, selectedDay, '기분 좋음');
-              },
+              emoji: '😊', label: '기분 좋음', color: Colors.green.shade300,
+              onTap: () => setState(() => _selectedEmotion = '기분 좋음'),
+              selected: _selectedEmotion == '기분 좋음',
             ),
-
-            const SizedBox(height: 20),
-
-            // 😐 보통
+            const SizedBox(height: 12),
             EmotionButton(
-              emoji: '😐',
-              label: '보통',
-              color: Colors.grey.shade400,
-              onTap: () {
-                _submitEmotion(context, selectedDay, '보통');
-              },
+              emoji: '😐', label: '보통', color: Colors.grey.shade400,
+              onTap: () => setState(() => _selectedEmotion = '보통'),
+              selected: _selectedEmotion == '보통',
             ),
-
-            const SizedBox(height: 20),
-
-            // 😞 기분 안 좋음
+            const SizedBox(height: 12),
             EmotionButton(
-              emoji: '😞',
-              label: '기분 안 좋음',
-              color: Colors.red.shade200,
-              onTap: () {
-                _submitEmotion(context, selectedDay, '기분 안 좋음');
-              },
+              emoji: '😞', label: '기분 안 좋음', color: Colors.red.shade200,
+              onTap: () => setState(() => _selectedEmotion = '기분 안 좋음'),
+              selected: _selectedEmotion == '기분 안 좋음',
+            ),
+            const SizedBox(height: 32),
+            TextField(
+              controller: _diaryController,
+              maxLines: 5,
+              decoration: InputDecoration(
+                hintText: '오늘 하루를 간단히 기록해보세요',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _saveData,
+              child: Text('저장하기'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                padding: EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
-  }
-
-  void _submitEmotion(BuildContext context, DateTime date, String emotion) async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString('emotionData');
-    Map<String, String> data = {};
-    if (jsonString != null) {
-      data = Map<String, String>.from(json.decode(jsonString));
-    }
-
-    final formattedDate = formatDate(date);
-    data[formattedDate] = emotion;
-
-    print('저장되는 감정 데이터: $data');
-
-    await prefs.setString('emotionData', json.encode(data));
-
-    // notifier에 업데이트
-    emotionDataNotifier = ValueNotifier<Map<String, String>>(Map<String, String>.from(data));
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$emotion 으로 저장되었습니다.')),
-    );
-
-    Navigator.pop(context); // 이전 화면으로 돌아가기
   }
 }
 
@@ -533,6 +583,7 @@ class EmotionButton extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback onTap;
+  final bool selected;
 
   const EmotionButton({
     super.key,
@@ -540,6 +591,7 @@ class EmotionButton extends StatelessWidget {
     required this.label,
     required this.color,
     required this.onTap,
+    this.selected = false,
   });
 
   @override
@@ -549,21 +601,15 @@ class EmotionButton extends StatelessWidget {
       child: ElevatedButton(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
-          backgroundColor: color,
+          backgroundColor: selected ? Colors.black54 : color,
           padding: const EdgeInsets.symmetric(vertical: 20),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         child: Column(
           children: [
-            Text(
-              emoji,
-              style: const TextStyle(fontSize: 36),
-            ),
+            Text(emoji, style: const TextStyle(fontSize: 36)),
             const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 18),
-            ),
+            Text(label, style: const TextStyle(fontSize: 18)),
           ],
         ),
       ),
