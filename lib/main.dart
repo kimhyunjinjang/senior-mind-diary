@@ -7,6 +7,101 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:pie_chart/pie_chart.dart';
 
+class SearchDiaryScreen extends StatefulWidget {
+  const SearchDiaryScreen({super.key});
+
+  @override
+  State<SearchDiaryScreen> createState() => _SearchDiaryScreenState();
+}
+
+class _SearchDiaryScreenState extends State<SearchDiaryScreen> {
+  String _keyword = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final diaryData = emotionDataNotifier.value;
+    final filteredEntries = diaryData.entries.where((entry) {
+      final diaryText = entry.value['diary'] ?? '';
+      return _keyword.isEmpty || diaryText.toLowerCase().contains(_keyword.toLowerCase()); // 대소문자 상관 없이 검색하기
+    }).toList();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('일기 검색')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              decoration: const InputDecoration(
+                labelText: '검색어를 입력하세요',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _keyword = value;
+                });
+              },
+            ),
+          ),
+          Expanded(
+            child: filteredEntries.isEmpty
+                ? Center(child: Text('일치하는 일기가 없습니다.', style: TextStyle(fontSize: 18, color: Colors.grey),
+              ),
+            )
+                : ListView.builder(
+              itemCount: filteredEntries.length,
+              itemBuilder: (context, index) {
+                final date = filteredEntries[index].key;
+                final emotion = filteredEntries[index].value['emotion'] ?? '';
+                final diary = filteredEntries[index].value['diary'] ?? '';
+
+                return ListTile(title: Text('[$date] $emotion'),
+                  subtitle: RichText(text: TextSpan(
+                    children: _highlightKeyword(diary, _keyword),
+                    style: const TextStyle(color: Colors.black), // 기본 스타일
+                  ),
+                ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<TextSpan> _highlightKeyword(String text, String keyword) {
+    if (keyword.isEmpty) return [TextSpan(text: text)];
+
+    final spans = <TextSpan>[];
+    final lowerText = text.toLowerCase();
+    final lowerKeyword = keyword.toLowerCase();
+
+    int start = 0;
+    int index;
+
+    while ((index = lowerText.indexOf(lowerKeyword, start)) != -1) {
+      if (index > start) {
+        spans.add(TextSpan(text: text.substring(start, index)));
+      }
+      spans.add(TextSpan(
+        text: text.substring(index, index + keyword.length),
+        style: const TextStyle(
+          backgroundColor: Colors.yellow,
+          fontWeight: FontWeight.bold,
+        ),
+      ));
+      start = index + keyword.length;
+    }
+
+    if (start < text.length) {
+      spans.add(TextSpan(text: text.substring(start)));
+    }
+
+    return spans;
+  }
+}
+
 ValueNotifier<Map<String, Map<String, String>>> emotionDataNotifier = ValueNotifier({});
 
 class EmotionStatsScreen extends StatelessWidget {
@@ -318,11 +413,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
         title: Text('시니어 마음일기'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SearchDiaryScreen(),),
+              );
+            },
+          ),
+          IconButton(
             icon: Icon(Icons.pie_chart),
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => EmotionStatsScreen()),
+                MaterialPageRoute(builder: (context) => const EmotionStatsScreen(),),
               );
             },
           ),
