@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -201,6 +202,7 @@ String formatDate(DateTime date) {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Flutter 초기화
   await initializeDateFormatting('ko_KR', null); // 한글 날짜 포맷 초기화
+  await Firebase.initializeApp(); // Firebase 초기화
   runApp(const MyApp());
 }
 
